@@ -1,0 +1,43 @@
+#!/usr/bin/env python2
+import os, sys, subprocess, signal
+from argparse import ArgumentParser
+import gamin
+from recursive_monitor import RecursiveMonitor
+
+parser = ArgumentParser(description='Executes a command when files change.')
+parser.add_argument('file', nargs='+', type=str, help='file or directory to watch')
+parser.add_argument('-c', '--command', type=str, help='command to execute', default='/bin/echo')
+parser.add_argument('-I', '--replace', type=str, help='substitute string with filename')
+parser.add_argument('-o', '--once', action='store_true', help='exit after first event')
+args = parser.parse_args()
+
+command = args.command
+replace = args.replace
+files = map(os.path.abspath, args.file)
+dirs = []
+
+for path in files:
+	if os.path.isdir(path):
+		dirs.append(path)
+	elif os.path.exists(path):
+		dirs.append(os.path.dirname(path))
+	else:
+		raise IOError('%s: No such file or directory' % path)
+dirs = set(dirs)
+
+def callback(path, signal):
+	if signal not in (gamin.GAMChanged, gamin.GAMCreated, gamin.GAMDeleted, gamin.GAMMoved):
+		return
+	if path not in files:
+		return
+
+	activecommand = command
+	if replace is not None:
+		activecommand = activecommand.replace(replace, path)
+	subprocess.Popen(activecommand, shell=True)
+	if args.once is True:
+		monitor.quit()
+
+monitor = RecursiveMonitor(dirs, callback, ignore_directories=False, call=False)
+signal.signal(signal.SIGINT, monitor.quit)
+monitor()
